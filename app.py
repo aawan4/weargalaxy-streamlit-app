@@ -46,7 +46,6 @@ if "messages" not in st.session_state:
 if "chat" not in st.session_state:
     st.session_state.chat = None
 
-
 # --- Core AI Functions ---
 def analyze_image_with_gemini(image_frame):
     """Sends an image to Gemini and returns face shape analysis."""
@@ -83,7 +82,6 @@ def get_suggestion_for_shape(shape_name):
     except Exception as e:
         st.session_state['analysis_text'] = f"API Call Failed: {str(e)}"
 
-
 # --- UI Layout ---
 # Preserved your centered title and subtitle
 st.markdown("""
@@ -95,7 +93,6 @@ st.markdown("""
 
 st.write("---")
 
-# NEW: Added "Manual Input" and "Chatbot" to the radio buttons
 mode = st.radio(
     "Choose your input method:",
     ("Webcam", "Upload Image", "Manual Input", "Chatbot"),
@@ -105,48 +102,47 @@ mode = st.radio(
 
 # --- Logic for Analysis Modes (Webcam, Upload, Manual) ---
 if mode != "Chatbot":
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        st.header("Your Input")
+    # LAYOUT CHANGE: Removed st.columns to create a single vertical layout
+    st.header("Your Input")
 
-        # --- Mode 1: Webcam (New Workflow) ---
-        if mode == "Webcam":
-            st.write("Position your face in the frame and click the button below.")
-            picture = st.camera_input("Webcam Capture", label_visibility="collapsed")
+    # --- Mode 1: Webcam (New Workflow) ---
+    if mode == "Webcam":
+        st.write("Position your face in the frame and click the button below.")
+        picture = st.camera_input("Webcam Capture", label_visibility="collapsed")
+        if picture:
+            st.write("Photo Captured! Click 'Analyze Photo' to proceed.")
+            if st.button("Analyze Photo"):
+                file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
+                image_to_analyze = cv2.imdecode(file_bytes, 1)
+                analyze_image_with_gemini(image_to_analyze)
 
-            if picture:
-                st.write("Photo Captured! Click 'Analyze Photo' to proceed.")
-                if st.button("Analyze Photo"):
-                    file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
-                    image_to_analyze = cv2.imdecode(file_bytes, 1)
-                    analyze_image_with_gemini(image_to_analyze)
+    # --- Mode 2: Upload Image ---
+    elif mode == "Upload Image":
+        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+        if uploaded_file:
+            st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+            if st.button("Analyze Uploaded Image"):
+                file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+                image_to_analyze = cv2.imdecode(file_bytes, 1)
+                analyze_image_with_gemini(image_to_analyze)
 
-        # --- Mode 2: Upload Image ---
-        elif mode == "Upload Image":
-            uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
-            if uploaded_file:
-                st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
-                if st.button("Analyze Uploaded Image"):
-                    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-                    image_to_analyze = cv2.imdecode(file_bytes, 1)
-                    analyze_image_with_gemini(image_to_analyze)
+    # --- Mode 3: Manual Input ---
+    elif mode == "Manual Input":
+        face_shapes = ["Select a Shape", "Oval", "Square", "Round", "Heart"]
+        selected_shape = st.selectbox(
+            "What is your face shape?",
+            face_shapes,
+            label_visibility="collapsed"
+        )
+        if selected_shape != "Select a Shape":
+            get_suggestion_for_shape(selected_shape)
 
-        # --- Mode 3: Manual Input ---
-        elif mode == "Manual Input":
-            face_shapes = ["Select a Shape", "Oval", "Square", "Round", "Heart"]
-            selected_shape = st.selectbox(
-                "What is your face shape?",
-                face_shapes,
-                label_visibility="collapsed"
-            )
-            if selected_shape != "Select a Shape":
-                get_suggestion_for_shape(selected_shape)
+    # LAYOUT CHANGE: Moved AI Analysis section to be below the input section
+    st.write("---")
+    st.header("AI Analysis")
+    st.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
 
-    with col2:
-        st.header("AI Analysis")
-        st.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
-
-# --- NEW: Logic for Chatbot Mode ---
+# --- Logic for Chatbot Mode ---
 elif mode == "Chatbot":
     st.header("Conversational AI Advisor")
     
@@ -160,10 +156,7 @@ elif mode == "Chatbot":
             {'role': 'user', 'parts': [system_instruction]},
             {'role': 'model', 'parts': ["Okay, I understand. I am the WeAR AI, ready to assist with all questions about eyeglass frames."]}
         ])
-        st.session_state.messages = [{
-            "role": "assistant",
-            "content": "Hello! I am the WeAR AI. How can I help you find the perfect glasses frames today?"
-        }]
+        st.session_state.messages = [{"role": "assistant", "content": "Hello! I am the WeAR AI. How can I help you find the perfect glasses frames today?"}]
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
