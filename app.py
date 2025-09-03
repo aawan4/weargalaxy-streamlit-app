@@ -8,23 +8,87 @@ import streamlit as st
 # --- Page Configuration ---
 st.set_page_config(page_title="WeAR Galaxy", page_icon="👓", layout="wide")
 
-# --- Custom CSS (Preserved from your version) ---
+# --- NEW: Custom CSS for a Modern, Branded Look ---
 st.markdown("""
     <style>
-        /* Center the main content block */
-        .block-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+        /* Import Google Fonts for a modern feel */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Montserrat:wght@600;700&display=swap');
+
+        /* --- Root Variables (Color Palette from your Image) --- */
+        :root {
+            --primary-dark: #2f3a47;          /* Deep Blue-Gray */
+            --secondary-dark: #4a5a6d;        /* Lighter Blue-Gray */
+            --accent-brown: #8b6d5c;          /* Warm Mid-Tone Brown */
+            --text-light: #e0e0e0;            /* Light Gray for text */
+            --hover-highlight: #a08170;       /* Lighter brown for hovers */
+            --font-main: 'Inter', sans-serif;
+            --font-heading: 'Montserrat', sans-serif;
         }
-        /* Center the radio buttons */
+
+        /* --- Main App Styling --- */
+        .stApp {
+            background-color: var(--primary-dark);
+            color: var(--text-light);
+        }
+
+        /* --- Typography --- */
+        h1, h2, h3 {
+            font-family: var(--font-heading);
+            color: var(--text-light);
+        }
+        
+        p, .stMarkdown, .stRadio, .stSelectbox, .stFileUploader {
+            font-family: var(--font-main);
+            color: var(--text-light);
+        }
+
+        /* --- Component Styling --- */
+        
+        /* Buttons */
+        div[data-testid="stButton"] > button {
+            background-color: var(--accent-brown);
+            color: var(--text-light);
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 24px;
+            transition: all 0.3s ease;
+        }
+        div[data-testid="stButton"] > button:hover {
+            background-color: var(--hover-highlight);
+            transform: translateY(-2px);
+        }
+        
+        /* Radio Buttons */
         div[data-testid="stRadio"] > div {
-            display: flex;
-            justify-content: center;
+            padding: 5px;
+            background-color: var(--secondary-dark);
+            border-radius: 10px;
         }
-        /* Center the headers and other markdown text */
-        .st-emotion-cache-16txtl3 {
-            text-align: center;
+
+        /* Select Box */
+        div[data-testid="stSelectbox"] > div {
+            background-color: var(--secondary-dark);
+            border-radius: 8px;
+        }
+
+        /* Analysis Result Box */
+        div[data-testid="stMarkdownContainer"] pre {
+            background-color: var(--secondary-dark);
+            border: 1px solid var(--accent-brown);
+            border-radius: 8px;
+            padding: 1rem;
+            color: var(--text-light);
+        }
+
+        /* Chat Interface */
+        div[data-testid="stChatInput"] {
+            background-color: var(--secondary-dark);
+        }
+        .stChatMessage {
+            background-color: var(--secondary-dark);
+            border: 1px solid var(--accent-brown);
+            border-radius: 10px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -51,7 +115,6 @@ def analyze_image_with_gemini(image_frame):
     """Sends an image to Gemini and returns face shape analysis."""
     rgb_frame = cv2.cvtColor(image_frame, cv2.COLOR_BGR2RGB)
     pil_image = Image.fromarray(rgb_frame)
-    # Preserved your custom prompt
     prompt = """
     Analyze the face in this image. 
     1. Determine the face shape (e.g., Oval, Round, Square, Heart).
@@ -83,7 +146,6 @@ def get_suggestion_for_shape(shape_name):
         st.session_state['analysis_text'] = f"API Call Failed: {str(e)}"
 
 # --- UI Layout ---
-# Preserved your centered title and subtitle
 st.markdown("""
     <div style="text-align: center;">
         <h1>👓 WeAR Galaxy AI Glasses Style Advisor</h1>
@@ -102,45 +164,42 @@ mode = st.radio(
 
 # --- Logic for Analysis Modes (Webcam, Upload, Manual) ---
 if mode != "Chatbot":
-    # LAYOUT CHANGE: Removed st.columns to create a single vertical layout
-    st.header("Your Input")
+    col1, col2 = st.columns(2, gap="large")
+    with col1:
+        st.header("Your Input")
 
-    # --- Mode 1: Webcam (New Workflow) ---
-    if mode == "Webcam":
-        st.write("Position your face in the frame and click the button below.")
-        picture = st.camera_input("Webcam Capture", label_visibility="collapsed")
-        if picture:
-            st.write("Photo Captured! Click 'Analyze Photo' to proceed.")
-            if st.button("Analyze Photo"):
-                file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
-                image_to_analyze = cv2.imdecode(file_bytes, 1)
-                analyze_image_with_gemini(image_to_analyze)
+        if mode == "Webcam":
+            st.write("Position your face in the frame and click the button below.")
+            picture = st.camera_input("Webcam Capture", label_visibility="collapsed")
+            if picture:
+                st.write("Photo Captured! Click 'Analyze Photo' to proceed.")
+                if st.button("Analyze Photo"):
+                    file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
+                    image_to_analyze = cv2.imdecode(file_bytes, 1)
+                    analyze_image_with_gemini(image_to_analyze)
 
-    # --- Mode 2: Upload Image ---
-    elif mode == "Upload Image":
-        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
-        if uploaded_file:
-            st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
-            if st.button("Analyze Uploaded Image"):
-                file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-                image_to_analyze = cv2.imdecode(file_bytes, 1)
-                analyze_image_with_gemini(image_to_analyze)
+        elif mode == "Upload Image":
+            uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+            if uploaded_file:
+                st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+                if st.button("Analyze Uploaded Image"):
+                    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+                    image_to_analyze = cv2.imdecode(file_bytes, 1)
+                    analyze_image_with_gemini(image_to_analyze)
 
-    # --- Mode 3: Manual Input ---
-    elif mode == "Manual Input":
-        face_shapes = ["Select a Shape", "Oval", "Square", "Round", "Heart"]
-        selected_shape = st.selectbox(
-            "What is your face shape?",
-            face_shapes,
-            label_visibility="collapsed"
-        )
-        if selected_shape != "Select a Shape":
-            get_suggestion_for_shape(selected_shape)
+        elif mode == "Manual Input":
+            face_shapes = ["Select a Shape", "Oval", "Square", "Round", "Heart"]
+            selected_shape = st.selectbox(
+                "What is your face shape?",
+                face_shapes,
+                label_visibility="collapsed"
+            )
+            if selected_shape != "Select a Shape":
+                get_suggestion_for_shape(selected_shape)
 
-    # LAYOUT CHANGE: Moved AI Analysis section to be below the input section
-    st.write("---")
-    st.header("AI Analysis")
-    st.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
+    with col2:
+        st.header("AI Analysis")
+        st.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
 
 # --- Logic for Chatbot Mode ---
 elif mode == "Chatbot":
