@@ -1,95 +1,140 @@
-# Final app.py code
 import cv2
-import mediapipe as mp
 import numpy as np
 import google.generativeai as genai
 import os
-import threading
 from PIL import Image
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 
-st.set_page_config(page_title="AI Glasses Advisor", page_icon="👓", layout="wide")
+# --- Page Configuration ---
+st.set_page_config(page_title="WeAR Galaxy", page_icon="👓", layout="wide")
 
+# --- Custom CSS (Preserved from your version) ---
+st.markdown("""
+    <style>
+        /* Center the main content block */
+        .block-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        /* Center the radio buttons */
+        div[data-testid="stRadio"] > div {
+            display: flex;
+            justify-content: center;
+        }
+        /* Center the headers and other markdown text */
+        .st-emotion-cache-16txtl3 {
+            text-align: center;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- Gemini API Configuration ---
 try:
-    API_KEY = os.getenv("GEMINI_API_KEY")
-    if not API_KEY:
-        API_KEY = st.secrets.get("GEMINI_API_KEY")
+    API_KEY = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
     st.error(f"FATAL ERROR: Could not configure Gemini API. Please set your GEMINI_API_KEY. Error: {e}")
     st.stop()
 
+# --- Initialize Session State ---
 if 'analysis_text' not in st.session_state:
     st.session_state['analysis_text'] = "Analysis will appear here."
 
-def get_ai_analysis(image_frame):
+# --- Core AI Functions ---
+
+def analyze_image_with_gemini(image_frame):
+    """Sends an image to Gemini and returns face shape analysis."""
     rgb_frame = cv2.cvtColor(image_frame, cv2.COLOR_BGR2RGB)
     pil_image = Image.fromarray(rgb_frame)
+    # Preserved your custom prompt
     prompt = """
     Analyze the face in this image. 
     1. Determine the face shape (e.g., Oval, Round, Square, Heart).
     2. Based on that shape, provide a concise suggestion for suitable glasses in 15 words or less.
     Format your response exactly like this:
-    Shape: [Detected Shape]
-    Suggestion: [Your Suggestion]
+    Your Face Shape Is: [Detected Shape]
+    WeAR AI's Suggestion: [Your Suggestion]
     """
     try:
+        st.session_state['analysis_text'] = "Analyzing with AI..."
         response = model.generate_content([prompt, pil_image])
-        return response.text.strip()
+        st.session_state['analysis_text'] = response.text.strip()
     except Exception as e:
-        return f"API Call Failed: {str(e)}"
+        st.session_state['analysis_text'] = f"API Call Failed: {str(e)}"
 
-def threaded_get_ai_analysis(image_frame):
-    result = get_ai_analysis(image_frame)
-    st.session_state['analysis_text'] = result
+def get_suggestion_for_shape(shape_name):
+    """Sends a face shape name to Gemini and returns a suggestion."""
+    prompt = f"""
+    You are a helpful and concise fashion assistant. My face shape is '{shape_name}'.
+    In 15 words or less, what are the best types of glasses for me?
+    Format your response exactly like this:
+    WeAR AI's Suggestion: [Your Suggestion]
+    """
+    try:
+        st.session_state['analysis_text'] = f"Getting suggestion for {shape_name} face..."
+        response = model.generate_content(prompt)
+        st.session_state['analysis_text'] = f"Your Face Shape Is: {shape_name}\n{response.text.strip()}"
+    except Exception as e:
+        st.session_state['analysis_text'] = f"API Call Failed: {str(e)}"
 
-st.title("👓 AI Glasses Style Advisor")
-st.markdown("Get personalized glasses recommendations based on your face shape, powered by Google Gemini.")
-col1, col2 = st.columns(2)
-with col1:
-    st.header("Your Image")
-    mode = st.radio("Choose your input method:", ("Live Webcam", "Upload an Image"), horizontal=True)
-    image_placeholder = st.empty()
-with col2:
-    st.header("AI Analysis")
-    analysis_placeholder = st.empty()
+# --- UI Layout ---
 
-class VideoTransformer(VideoTransformerBase):
-    def __init__(self):
-        self.frame_lock = threading.Lock()
-        self.latest_frame = None
-    def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        with self.frame_lock:
-            self.latest_frame = img
-        return img
+# Preserved your centered title and subtitle
+st.markdown("""
+    <div style="text-align: center;">
+        <h1>👓 WeAR Galaxy AI Glasses Style Advisor</h1>
+        <p>Get personalized glasses recommendations based on your face shape, powered by WeAR AI.</p>
+    </div>
+""", unsafe_allow_html=True)
 
-if mode == "Live Webcam":
-    ctx = webrtc_streamer(key="webcam", video_transformer_factory=VideoTransformer, rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
-    st.sidebar.header("Controls")
-    if st.sidebar.button("Analyze My Face"):
-        if ctx.video_transformer and ctx.video_transformer.latest_frame is not None:
-            frame_to_analyze = ctx.video_transformer.latest_frame
-            st.session_state['analysis_text'] = "Analyzing..."
-            threading.Thread(target=threaded_get_ai_analysis, args=(frame_to_analyze,)).start()
-        else:
-            st.sidebar.warning("Webcam is not active or feed has not started.")
-    image_placeholder.markdown("<div style='text-align: center;'>Webcam feed will appear here once you press START.</div>", unsafe_allow_html=True)
+st.write("---")
 
-if mode == "Upload an Image":
-    st.sidebar.header("Controls")
-    uploaded_file = st.sidebar.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-    if uploaded_file is not None:
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        image = cv2.imdecode(file_bytes, 1)
-        image_placeholder.image(image, channels="BGR", use_container_width=True)
-        if st.sidebar.button("Analyze This Image"):
-            st.session_state['analysis_text'] = "Analyzing..."
-            result = get_ai_analysis(image)
-            st.session_state['analysis_text'] = result
-    else:
-        image_placeholder.markdown("<div style='text-align: center;'>Upload an image to begin.</div>", unsafe_allow_html=True)
+# --- Image and Controls Section ---
+st.header("Your Input")
+# NEW: Added "Manual Input" to the radio buttons
+mode = st.radio(
+    "Choose your input method:",
+    ("Webcam", "Upload Image", "Manual Input"),
+    horizontal=True,
+    label_visibility="collapsed"
+)
 
-analysis_placeholder.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
+# --- Mode 1: Webcam (New Workflow) ---
+if mode == "Webcam":
+    st.write("Position your face in the frame and click the button below.")
+    picture = st.camera_input("Webcam Capture", label_visibility="collapsed")
+
+    if picture:
+        st.write("Photo Captured! Click 'Analyze Photo' to proceed.")
+        if st.button("Analyze Photo"):
+            file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
+            image_to_analyze = cv2.imdecode(file_bytes, 1)
+            analyze_image_with_gemini(image_to_analyze)
+
+# --- Mode 2: Upload Image ---
+elif mode == "Upload Image":
+    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+    if uploaded_file:
+        st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+        if st.button("Analyze Uploaded Image"):
+            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+            image_to_analyze = cv2.imdecode(file_bytes, 1)
+            analyze_image_with_gemini(image_to_analyze)
+
+# --- Mode 3: Manual Input ---
+elif mode == "Manual Input":
+    face_shapes = ["Select a Shape", "Oval", "Square", "Round", "Heart"]
+    selected_shape = st.selectbox(
+        "What is your face shape?",
+        face_shapes,
+        label_visibility="collapsed"
+    )
+    if selected_shape != "Select a Shape":
+        get_suggestion_for_shape(selected_shape)
+
+# --- AI Analysis Section ---
+st.write("---")
+st.header("AI Analysis")
+st.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
