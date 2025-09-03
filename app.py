@@ -41,9 +41,13 @@ except Exception as e:
 # --- Initialize Session State ---
 if 'analysis_text' not in st.session_state:
     st.session_state['analysis_text'] = "Analysis will appear here."
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "chat" not in st.session_state:
+    st.session_state.chat = None
+
 
 # --- Core AI Functions ---
-
 def analyze_image_with_gemini(image_frame):
     """Sends an image to Gemini and returns face shape analysis."""
     rgb_frame = cv2.cvtColor(image_frame, cv2.COLOR_BGR2RGB)
@@ -67,7 +71,7 @@ def analyze_image_with_gemini(image_frame):
 def get_suggestion_for_shape(shape_name):
     """Sends a face shape name to Gemini and returns a suggestion."""
     prompt = f"""
-    You are a helpful and concise fashion assistant. My face shape is '{shape_name}'.
+    You are a helpful and concise fashion assistant named WeAR AI. My face shape is '{shape_name}'.
     In 15 words or less, what are the best types of glasses for me?
     Format your response exactly like this:
     WeAR AI's Suggestion: [Your Suggestion]
@@ -79,8 +83,8 @@ def get_suggestion_for_shape(shape_name):
     except Exception as e:
         st.session_state['analysis_text'] = f"API Call Failed: {str(e)}"
 
-# --- UI Layout ---
 
+# --- UI Layout ---
 # Preserved your centered title and subtitle
 st.markdown("""
     <div style="text-align: center;">
@@ -91,50 +95,87 @@ st.markdown("""
 
 st.write("---")
 
-# --- Image and Controls Section ---
-st.header("Your Input")
-# NEW: Added "Manual Input" to the radio buttons
+# NEW: Added "Manual Input" and "Chatbot" to the radio buttons
 mode = st.radio(
     "Choose your input method:",
-    ("Webcam", "Upload Image", "Manual Input"),
+    ("Webcam", "Upload Image", "Manual Input", "Chatbot"),
     horizontal=True,
     label_visibility="collapsed"
 )
 
-# --- Mode 1: Webcam (New Workflow) ---
-if mode == "Webcam":
-    st.write("Position your face in the frame and click the button below.")
-    picture = st.camera_input("Webcam Capture", label_visibility="collapsed")
+# --- Logic for Analysis Modes (Webcam, Upload, Manual) ---
+if mode != "Chatbot":
+    col1, col2 = st.columns(2, gap="large")
+    with col1:
+        st.header("Your Input")
 
-    if picture:
-        st.write("Photo Captured! Click 'Analyze Photo' to proceed.")
-        if st.button("Analyze Photo"):
-            file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
-            image_to_analyze = cv2.imdecode(file_bytes, 1)
-            analyze_image_with_gemini(image_to_analyze)
+        # --- Mode 1: Webcam (New Workflow) ---
+        if mode == "Webcam":
+            st.write("Position your face in the frame and click the button below.")
+            picture = st.camera_input("Webcam Capture", label_visibility="collapsed")
 
-# --- Mode 2: Upload Image ---
-elif mode == "Upload Image":
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
-    if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
-        if st.button("Analyze Uploaded Image"):
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            image_to_analyze = cv2.imdecode(file_bytes, 1)
-            analyze_image_with_gemini(image_to_analyze)
+            if picture:
+                st.write("Photo Captured! Click 'Analyze Photo' to proceed.")
+                if st.button("Analyze Photo"):
+                    file_bytes = np.asarray(bytearray(picture.read()), dtype=np.uint8)
+                    image_to_analyze = cv2.imdecode(file_bytes, 1)
+                    analyze_image_with_gemini(image_to_analyze)
 
-# --- Mode 3: Manual Input ---
-elif mode == "Manual Input":
-    face_shapes = ["Select a Shape", "Oval", "Square", "Round", "Heart"]
-    selected_shape = st.selectbox(
-        "What is your face shape?",
-        face_shapes,
-        label_visibility="collapsed"
-    )
-    if selected_shape != "Select a Shape":
-        get_suggestion_for_shape(selected_shape)
+        # --- Mode 2: Upload Image ---
+        elif mode == "Upload Image":
+            uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+            if uploaded_file:
+                st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+                if st.button("Analyze Uploaded Image"):
+                    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+                    image_to_analyze = cv2.imdecode(file_bytes, 1)
+                    analyze_image_with_gemini(image_to_analyze)
 
-# --- AI Analysis Section ---
-st.write("---")
-st.header("AI Analysis")
-st.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
+        # --- Mode 3: Manual Input ---
+        elif mode == "Manual Input":
+            face_shapes = ["Select a Shape", "Oval", "Square", "Round", "Heart"]
+            selected_shape = st.selectbox(
+                "What is your face shape?",
+                face_shapes,
+                label_visibility="collapsed"
+            )
+            if selected_shape != "Select a Shape":
+                get_suggestion_for_shape(selected_shape)
+
+    with col2:
+        st.header("AI Analysis")
+        st.markdown(f"**Analysis Result:**\n```\n{st.session_state['analysis_text']}\n```")
+
+# --- NEW: Logic for Chatbot Mode ---
+elif mode == "Chatbot":
+    st.header("Conversational AI Advisor")
+    
+    if st.session_state.chat is None:
+        system_instruction = """You are a specialized AI fashion assistant for an app called 'WeAR Galaxy'. 
+        Your name is WeAR AI. Your ONLY purpose is to answer questions about eyeglass frames, styles, materials, 
+        and what frames are suitable for different face shapes. You MUST politely refuse to answer any question that is 
+        not related to eyeglasses. If asked an off-topic question, say something like, 'I am the WeAR AI assistant 
+        and my expertise is limited to eyeglass frames. How can I help you with glasses today?'"""
+        st.session_state.chat = model.start_chat(history=[
+            {'role': 'user', 'parts': [system_instruction]},
+            {'role': 'model', 'parts': ["Okay, I understand. I am the WeAR AI, ready to assist with all questions about eyeglass frames."]}
+        ])
+        st.session_state.messages = [{
+            "role": "assistant",
+            "content": "Hello! I am the WeAR AI. How can I help you find the perfect glasses frames today?"
+        }]
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input("Ask about glasses styles..."):
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        with st.spinner("Thinking..."):
+            response = st.session_state.chat.send_message(prompt)
+            with st.chat_message("assistant"):
+                st.markdown(response.text)
+        st.session_state.messages.append({"role": "assistant", "content": response.text})
