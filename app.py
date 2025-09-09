@@ -21,7 +21,7 @@ def img_to_bytes(img_path):
 # --- Page Configuration ---
 st.set_page_config(page_title="WeAR Galaxy", page_icon="logo.png", layout="wide")
 
-# --- NEW: Custom CSS for a Modern, Branded Look ---
+# --- Custom CSS for a Modern, Branded Look ---
 st.markdown("""
     <style>
         /* Import Google Fonts for a modern feel */
@@ -46,6 +46,11 @@ st.markdown("""
             padding-top: 5rem; /* Add padding to prevent content from hiding behind fixed navbar */
         }
         
+        /* --- HIDE STREAMLIT HEADER --- */
+        [data-testid="stHeader"] {
+            display: none;
+        }
+
         /* --- START: Navbar Styling --- */
         .navbar {
             display: flex;
@@ -227,7 +232,7 @@ def get_suggestion_for_shape(shape_name):
 # --- UI Layout ---
 
 # --- START: Injected Navbar HTML with Custom Logo ---
-LOGO_PATH = "logo.png"  # Make sure this path is correct
+LOGO_PATH = "logo.png"
 logo_base64 = img_to_bytes(LOGO_PATH)
 
 st.markdown(f"""
@@ -238,11 +243,11 @@ st.markdown(f"""
             </a>
         </div>
         <ul class="nav-links">
-            <li><a href="https://weargalaxy.me/">Home</a></li>
-            <li><a href="https://weargalaxy.me/about/">About</a></li>
-            <li><a href="https://weargalaxy.me/gallery/">Gallery</a></li>
-            <li><a href="https://ai.weargalaxy.me/" class="ai-link">WeAR AI 🚀</a></li>
-            <li><a href="https://weargalaxy.me/contacts/">Contact</a></li>
+           <li><a href="https://weargalaxy.me/" target="_self">Home</a></li>
+            <li><a href="https://weargalaxy.me/about/" target="_self">About</a></li>
+            <li><a href="https://weargalaxy.me/gallery/" target="_self">Gallery</a></li>
+            <li><a href="https://ai.weargalaxy.me/" class="ai-link" target="_self">WeAR AI 🚀</a></li>
+            <li><a href="https://weargalaxy.me/contact/" target="_self">Contact</a></li>
         </ul>
     </nav>
 """, unsafe_allow_html=True)
