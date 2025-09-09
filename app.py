@@ -181,7 +181,8 @@ if mode != "Chatbot":
         elif mode == "Upload Image":
             uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
             if uploaded_file:
-                st.image(uploaded_file, caption="Uploaded Image", use_container_width=True)
+                # This line was changed to set a fixed preview width
+                st.image(uploaded_file, caption="Uploaded Image", width=300)
                 if st.button("Analyze Uploaded Image"):
                     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
                     image_to_analyze = cv2.imdecode(file_bytes, 1)
@@ -231,4 +232,3 @@ elif mode == "Chatbot":
             with st.chat_message("assistant"):
                 st.markdown(response.text)
         st.session_state.messages.append({"role": "assistant", "content": response.text})
-
