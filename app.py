@@ -6,7 +6,7 @@ from PIL import Image
 import streamlit as st
 
 # --- Page Configuration ---
-st.set_page_config(page_title="WeAR Galaxy", page_icon="👓", layout="wide")
+st.set_page_config(page_title="WeAR Galaxy", page_icon="logo.png", layout="wide")
 
 # --- NEW: Custom CSS for a Modern, Branded Look ---
 st.markdown("""
@@ -232,3 +232,4 @@ elif mode == "Chatbot":
             with st.chat_message("assistant"):
                 st.markdown(response.text)
         st.session_state.messages.append({"role": "assistant", "content": response.text})
+
