@@ -4,6 +4,19 @@ import google.generativeai as genai
 import os
 from PIL import Image
 import streamlit as st
+import base64
+from pathlib import Path
+
+# --- Helper Function to Encode Image ---
+def img_to_bytes(img_path):
+    """Encodes an image file to a Base64 string for HTML embedding."""
+    try:
+        img_bytes = Path(img_path).read_bytes()
+        encoded = base64.b64encode(img_bytes).decode()
+        return encoded
+    except FileNotFoundError:
+        st.error(f"Logo file not found at path: {img_path}")
+        return None
 
 # --- Page Configuration ---
 st.set_page_config(page_title="WeAR Galaxy", page_icon="logo.png", layout="wide")
@@ -16,20 +29,86 @@ st.markdown("""
 
         /* --- Root Variables (Color Palette from your Image) --- */
         :root {
-            --primary-dark: #2f3a47;         /* Deep Blue-Gray */
-            --secondary-dark: #4a5a6d;       /* Lighter Blue-Gray */
-            --accent-brown: #8b6d5c;         /* Warm Mid-Tone Brown */
-            --text-light: #e0e0e0;           /* Light Gray for text */
-            --hover-highlight: #a08170;      /* Lighter brown for hovers */
+            --primary-dark: #2f3a47;      /* Deep Blue-Gray */
+            --secondary-dark: #4a5a6d;   /* Lighter Blue-Gray */
+            --accent-brown: #8b6d5c;     /* Warm Mid-Tone Brown */
+            --text-light: #e0e0e0;       /* Light Gray for text */
+            --hover-highlight: #a08170;  /* Lighter brown for hovers */
             --font-main: 'Inter', sans-serif;
             --font-heading: 'Montserrat', sans-serif;
+            --shadow-medium: rgba(0, 0, 0, 0.2);
         }
 
         /* --- Main App Styling --- */
         .stApp {
             background-color: var(--primary-dark);
             color: var(--text-light);
+            padding-top: 5rem; /* Add padding to prevent content from hiding behind fixed navbar */
         }
+        
+        /* --- START: Navbar Styling --- */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 40px;
+            background-color: var(--primary-dark);
+            box-shadow: 0 2px 10px var(--shadow-medium);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            box-sizing: border-box;
+        }
+
+        .navbar .logo a {
+            text-decoration: none;
+            display: flex; /* Helps vertically align the image */
+            align-items: center;
+        }
+        
+        .navbar .logo img {
+            transition: opacity 0.3s ease;
+            height: 40px; /* Set a specific height for the logo */
+        }
+        
+        .navbar .logo a:hover img {
+            opacity: 0.8;
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 25px;
+            margin: 0;
+        }
+
+        .nav-links li a {
+            text-decoration: none;
+            color: var(--text-light);
+            font-size: 1em;
+            font-weight: 500;
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            font-family: var(--font-main);
+        }
+
+        .nav-links li a:hover {
+            background-color: var(--accent-brown);
+            color: var(--text-light);
+        }
+
+        .nav-links .ai-link {
+            background-color: var(--accent-brown);
+            font-weight: 700;
+        }
+        .nav-links .ai-link:hover {
+            background-color: var(--hover-highlight);
+        }
+        /* --- END: Navbar Styling --- */
 
         /* --- Typography --- */
         h1, h2, h3 {
@@ -146,6 +225,30 @@ def get_suggestion_for_shape(shape_name):
         st.session_state['analysis_text'] = f"API Call Failed: {str(e)}"
 
 # --- UI Layout ---
+
+# --- START: Injected Navbar HTML with Custom Logo ---
+LOGO_PATH = "logo.png"  # Make sure this path is correct
+logo_base64 = img_to_bytes(LOGO_PATH)
+
+st.markdown(f"""
+    <nav class="navbar">
+        <div class="logo">
+            <a href="#">
+                <img src="data:image/png;base64,{logo_base64}" alt="WeAR Galaxy Logo">
+            </a>
+        </div>
+        <ul class="nav-links">
+            <li><a href="https://weargalaxy.me/">Home</a></li>
+            <li><a href="https://weargalaxy.me/about/">About</a></li>
+            <li><a href="https://weargalaxy.me/gallery/">Gallery</a></li>
+            <li><a href="https://ai.weargalaxy.me/" class="ai-link">WeAR AI 🚀</a></li>
+            <li><a href="https://weargalaxy.me/contacts/">Contact</a></li>
+        </ul>
+    </nav>
+""", unsafe_allow_html=True)
+# --- END: Injected Navbar HTML ---
+
+
 st.markdown("""
     <div style="text-align: center;">
         <h1>👓 WeAR Galaxy AI Glasses Style Advisor</h1>
@@ -181,7 +284,6 @@ if mode != "Chatbot":
         elif mode == "Upload Image":
             uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
             if uploaded_file:
-                # This line was changed to set a fixed preview width
                 st.image(uploaded_file, caption="Uploaded Image", width=300)
                 if st.button("Analyze Uploaded Image"):
                     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -232,4 +334,3 @@ elif mode == "Chatbot":
             with st.chat_message("assistant"):
                 st.markdown(response.text)
         st.session_state.messages.append({"role": "assistant", "content": response.text})
-
