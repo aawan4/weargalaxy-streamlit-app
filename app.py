@@ -181,7 +181,7 @@ st.markdown("""
 try:
     API_KEY = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-2.5-flash-latest')
+    model = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
     st.error(f"FATAL ERROR: Could not configure Gemini API. Please set your GEMINI_API_KEY. Error: {e}")
     st.stop()
@@ -339,4 +339,5 @@ elif mode == "Chatbot":
             with st.chat_message("assistant"):
                 st.markdown(response.text)
         st.session_state.messages.append({"role": "assistant", "content": response.text})
+
 
