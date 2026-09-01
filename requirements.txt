@@ -1,2 +1,5 @@
 fastapi
-
+pydantic
+pillow
+python-multipart
+google-genai
