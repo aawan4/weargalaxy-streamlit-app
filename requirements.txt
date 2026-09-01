@@ -5,3 +5,4 @@ google-generativeai
 opencv-python
 mediapipe
 fastapi==0.117.1
+python-3.11
