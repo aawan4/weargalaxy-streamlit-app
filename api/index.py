@@ -19,6 +19,7 @@ from pydantic import BaseModel
 # ============================================================
 
 logging.basicConfig(level=logging.INFO)
+
 LOG = logging.getLogger("wear-galaxy-ai")
 
 
@@ -67,12 +68,12 @@ FACE_SHAPES = (
 # ============================================================
 
 # IMPORTANT:
-# Keep this as a top-level variable.
-# Vercel detects this object as the application.
+# This must remain a top-level FastAPI instance.
+# Vercel detects this variable automatically.
 
 app = FastAPI(
-    title="WeAR Galaxy AI API",
-    description="AI-powered glasses style advisor",
+    title="WeAR Galaxy AI",
+    description="AI-powered eyeglass style advisor",
     version="1.0.0",
 )
 
@@ -91,7 +92,7 @@ app.add_middleware(
 
 
 # ============================================================
-# GLOBAL ERROR HANDLING
+# GLOBAL ERROR HANDLER
 # ============================================================
 
 @app.middleware("http")
@@ -99,12 +100,10 @@ async def catch_unhandled_errors(
     request: Request,
     call_next,
 ):
-
     try:
         return await call_next(request)
 
     except Exception as exc:
-
         LOG.exception(
             "Unhandled error on %s",
             request.url.path,
@@ -170,12 +169,6 @@ def _detail(
 # ============================================================
 
 def _load_gemini() -> Dict[str, Any]:
-    """
-    Initialize Gemini lazily.
-
-    Nothing from the Google SDK is imported when Vercel
-    imports this module. This is important for deployment.
-    """
 
     if (
         _GEMINI["ready"]
@@ -196,7 +189,7 @@ def _load_gemini() -> Dict[str, Any]:
     failures: List[str] = []
 
     # --------------------------------------------------------
-    # Current Google GenAI SDK
+    # Google GenAI SDK
     # --------------------------------------------------------
 
     try:
@@ -265,8 +258,7 @@ def _load_gemini() -> Dict[str, Any]:
     )
 
     _GEMINI["error"] = _detail(
-        "The Gemini SDK could not be initialized. "
-        "Check your requirements.txt.",
+        "The Gemini SDK could not be initialized.",
         " | ".join(failures),
     )
 
@@ -274,7 +266,7 @@ def _load_gemini() -> Dict[str, Any]:
 
 
 # ============================================================
-# GET GEMINI MODEL
+# GET GEMINI
 # ============================================================
 
 def get_model() -> Dict[str, Any]:
@@ -343,13 +335,11 @@ def _generate(
             ),
         )
 
-    return _extract_text(
-        response
-    )
+    return _extract_text(response)
 
 
 # ============================================================
-# EXTRACT GEMINI RESPONSE
+# EXTRACT RESPONSE TEXT
 # ============================================================
 
 def _extract_text(
@@ -366,16 +356,10 @@ def _extract_text(
     text: Optional[str] = None
 
     try:
-
         text = response.text
 
     except Exception:
-
         text = None
-
-    # --------------------------------------------------------
-    # Fallback candidate extraction
-    # --------------------------------------------------------
 
     if not text:
 
@@ -412,29 +396,22 @@ def _extract_text(
                 )
 
                 if piece:
+                    chunks.append(piece)
 
-                    chunks.append(
-                        piece
-                    )
-
-        text = "".join(
-            chunks
-        )
+        text = "".join(chunks)
 
     if not text or not text.strip():
 
         raise HTTPException(
             status_code=422,
-            detail=_blocked_reason(
-                response
-            ),
+            detail=_blocked_reason(response),
         )
 
     return text.strip()
 
 
 # ============================================================
-# GEMINI EMPTY RESPONSE REASON
+# EMPTY RESPONSE REASON
 # ============================================================
 
 def _blocked_reason(
@@ -506,7 +483,7 @@ def _blocked_reason(
 
 
 # ============================================================
-# IMAGE HELPERS
+# IMAGE SIZE CHECK
 # ============================================================
 
 def _check_size(
@@ -531,13 +508,16 @@ def _check_size(
         )
 
 
+# ============================================================
+# OPEN IMAGE
+# ============================================================
+
 def _open_image(
     raw: bytes,
 ) -> Any:
 
     try:
 
-        # Lazy import
         from PIL import Image
 
     except Exception as exc:
@@ -545,8 +525,7 @@ def _open_image(
         raise HTTPException(
             status_code=500,
             detail=_detail(
-                "Pillow is not installed. "
-                "Add pillow to requirements.txt.",
+                "Pillow is not installed.",
                 f"{type(exc).__name__}: {exc}",
             ),
         )
@@ -571,9 +550,7 @@ def _open_image(
 
     if image.mode != "RGB":
 
-        image = image.convert(
-            "RGB"
-        )
+        image = image.convert("RGB")
 
     if max(image.size) > MAX_IMAGE_EDGE:
 
@@ -599,8 +576,6 @@ def _decode_base64_image(
         payload or ""
     ).strip()
 
-    # Remove:
-    # data:image/png;base64,
     if "," in data:
 
         data = data.split(
@@ -631,7 +606,6 @@ def _decode_base64_image(
             detail="Image data is required.",
         )
 
-    # 4 Base64 chars = approximately 3 bytes
     if len(data) > (
         (MAX_IMAGE_BYTES // 3 + 1)
         * 4
@@ -647,11 +621,9 @@ def _decode_base64_image(
 
     try:
 
-        image_bytes = (
-            base64.b64decode(
-                data,
-                validate=True,
-            )
+        image_bytes = base64.b64decode(
+            data,
+            validate=True,
         )
 
     except (
@@ -664,9 +636,7 @@ def _decode_base64_image(
             detail="Invalid Base64 image data.",
         )
 
-    _check_size(
-        image_bytes
-    )
+    _check_size(image_bytes)
 
     return image_bytes
 
@@ -693,19 +663,15 @@ async def _read_upload(
         raise HTTPException(
             status_code=400,
             detail=_detail(
-                "Could not read the uploaded "
-                "form data. Send the image as "
-                "multipart/form-data in a field "
-                "named 'file'.",
+                "Could not read the uploaded form data. "
+                "Send the image as multipart/form-data "
+                "in a field named 'file'.",
                 f"{type(exc).__name__}: {exc}",
             ),
         )
 
-    upload = form.get(
-        field
-    )
+    upload = form.get(field)
 
-    # Fallback to first file
     if not hasattr(
         upload,
         "read",
@@ -737,18 +703,17 @@ async def _read_upload(
 
 
 # ============================================================
-# AI PROMPTS
+# PROMPTS
 # ============================================================
 
 FACE_ANALYSIS_PROMPT = """
-You are WeAR AI, a specialized eyeglass
-fashion assistant.
+You are WeAR AI, a specialized eyeglass fashion assistant.
 
 Analyze the person's face in the provided image.
 
 Determine the most likely face shape.
 
-Possible face shapes include:
+Possible face shapes:
 
 - Oval
 - Round
@@ -757,19 +722,17 @@ Possible face shapes include:
 - Diamond
 - Oblong
 
-Then recommend suitable eyeglass frame
-styles for that face shape.
+Then recommend suitable eyeglass frame styles.
 
 Do not identify the person.
 Do not provide personal identity information.
 
-Only analyze visible facial proportions
-relevant to eyeglass styling.
+Only analyze visible facial proportions relevant
+to eyeglass styling.
 
-Keep the glasses recommendation to 15 words
-or less.
+Keep the glasses recommendation to 15 words or less.
 
-Return ONLY this format:
+Return ONLY:
 
 Your Face Shape Is: [Detected Shape]
 WeAR AI's Suggestion: [Short glasses recommendation]
@@ -779,8 +742,7 @@ WeAR AI's Suggestion: [Short glasses recommendation]
 WEBCAM_ANALYSIS_PROMPT = """
 You are WeAR AI, an eyeglass fashion assistant.
 
-Analyze the visible face and determine the
-most likely face shape.
+Analyze the visible face and determine the most likely face shape.
 
 Choose from:
 
@@ -805,15 +767,13 @@ Keep the recommendation to 15 words or less.
 
 
 SUGGESTION_PROMPT = """
-You are WeAR AI, a concise eyeglass
-fashion assistant.
+You are WeAR AI, a concise eyeglass fashion assistant.
 
 The user's face shape is:
 
 {shape}
 
-Recommend the most suitable eyeglass
-frame styles.
+Recommend the most suitable eyeglass frame styles.
 
 Keep the recommendation to 15 words or less.
 
@@ -824,8 +784,8 @@ WeAR AI's Suggestion: [Your recommendation]
 
 
 CHAT_SYSTEM_INSTRUCTION = """
-You are WeAR AI, a specialized AI fashion
-assistant for an application called WeAR Galaxy.
+You are WeAR AI, a specialized AI fashion assistant
+for an application called WeAR Galaxy.
 
 Your ONLY area of expertise is eyeglasses.
 
@@ -841,14 +801,12 @@ You can answer questions about:
 - Lens/frame appearance
 - General glasses styling
 
-You must politely refuse questions unrelated
-to eyeglasses.
+You must politely refuse questions unrelated to eyeglasses.
 
 For unrelated questions, say:
 
-"I am the WeAR AI assistant and my expertise
-is limited to eyeglass frames. How can I help
-you with glasses today?"
+"I am the WeAR AI assistant and my expertise is limited
+to eyeglass frames. How can I help you with glasses today?"
 
 Do not claim to diagnose medical conditions.
 
@@ -861,7 +819,7 @@ Keep answers useful and reasonably concise.
 # ============================================================
 
 @app.get("/")
-async def root() -> Dict[str, Any]:
+async def root():
 
     return {
         "status": "online",
@@ -876,18 +834,14 @@ async def root() -> Dict[str, Any]:
 # ============================================================
 
 @app.get("/api/health")
-async def health() -> Dict[str, Any]:
+async def health():
 
     state = _load_gemini()
 
     return {
         "status": "healthy",
-        "gemini_configured": bool(
-            API_KEY
-        ),
-        "gemini_ready": bool(
-            state["ready"]
-        ),
+        "gemini_configured": bool(API_KEY),
+        "gemini_ready": bool(state["ready"]),
         "gemini_sdk": state["flavour"],
         "model": GEMINI_MODEL,
         "error": state["error"],
@@ -901,13 +855,11 @@ async def health() -> Dict[str, Any]:
 @app.post("/api/analyze")
 async def analyze_image(
     request: Request,
-) -> Dict[str, Any]:
+):
 
     try:
 
-        upload = await _read_upload(
-            request
-        )
+        upload = await _read_upload(request)
 
         content_type = (
             getattr(
@@ -925,36 +877,21 @@ async def analyze_image(
             .lower()
         )
 
-        if not content_type:
-
-            raise HTTPException(
-                status_code=400,
-                detail="No file type was provided.",
-            )
-
-        if (
-            content_type
-            not in ALLOWED_IMAGE_TYPES
-        ):
+        if content_type not in ALLOWED_IMAGE_TYPES:
 
             raise HTTPException(
                 status_code=400,
                 detail=(
                     "Invalid image type. "
-                    "Please upload JPG, PNG, "
-                    "or WEBP."
+                    "Please upload JPG, PNG, or WEBP."
                 ),
             )
 
         image_bytes = await upload.read()
 
-        _check_size(
-            image_bytes
-        )
+        _check_size(image_bytes)
 
-        image = _open_image(
-            image_bytes
-        )
+        image = _open_image(image_bytes)
 
         result = _generate(
             [
@@ -974,7 +911,6 @@ async def analyze_image(
         }
 
     except HTTPException:
-
         raise
 
     except Exception as exc:
@@ -993,13 +929,13 @@ async def analyze_image(
 
 
 # ============================================================
-# MANUAL FACE SHAPE RECOMMENDATION
+# MANUAL FACE SHAPE SUGGESTION
 # ============================================================
 
 @app.post("/api/suggestion")
 async def manual_suggestion(
     request: FaceShapeRequest,
-) -> Dict[str, Any]:
+):
 
     try:
 
@@ -1050,7 +986,6 @@ async def manual_suggestion(
         }
 
     except HTTPException:
-
         raise
 
     except Exception as exc:
@@ -1075,7 +1010,7 @@ async def manual_suggestion(
 @app.post("/api/chat")
 async def chatbot(
     request: ChatRequest,
-) -> Dict[str, Any]:
+):
 
     try:
 
@@ -1114,7 +1049,6 @@ async def chatbot(
         }
 
     except HTTPException:
-
         raise
 
     except Exception as exc:
@@ -1139,7 +1073,7 @@ async def chatbot(
 @app.post("/api/analyze-base64")
 async def analyze_base64(
     request: Base64ImageRequest,
-) -> Dict[str, Any]:
+):
 
     try:
 
@@ -1150,10 +1084,8 @@ async def analyze_base64(
                 detail="Image data is required.",
             )
 
-        image_bytes = (
-            _decode_base64_image(
-                request.image
-            )
+        image_bytes = _decode_base64_image(
+            request.image
         )
 
         image = _open_image(
@@ -1173,7 +1105,6 @@ async def analyze_base64(
         }
 
     except HTTPException:
-
         raise
 
     except Exception as exc:
@@ -1196,7 +1127,7 @@ async def analyze_base64(
 # ============================================================
 
 @app.get("/api")
-async def api_info() -> Dict[str, Any]:
+async def api_info():
 
     return {
         "application": "WeAR Galaxy AI",
@@ -1209,18 +1140,4 @@ async def api_info() -> Dict[str, Any]:
             "chatbot": "/api/chat",
         },
     }
-
-
-# ============================================================
-# VERCEL EXPORTS
-# ============================================================
-
-application = app
-handler = app
-
-__all__ = [
-    "app",
-    "application",
-    "handler",
-]
 ```
