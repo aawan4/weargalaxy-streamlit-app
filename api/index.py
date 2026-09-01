@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 app = FastAPI(
     title="WeAR Galaxy AI",
-    version="1.0.0",
+    version="1.0.0"
 )
 
 
@@ -11,6 +11,14 @@ def root():
     return {
         "status": "online",
         "message": "WeAR Galaxy AI API is running"
+    }
+
+
+@app.get("/api")
+def api():
+    return {
+        "status": "online",
+        "application": "WeAR Galaxy AI"
     }
 
 
