@@ -15,10 +15,26 @@ from pydantic import BaseModel
 
 
 # ============================================================
+# APPLICATION
+# ============================================================
+
+app = FastAPI(
+    title="WeAR Galaxy AI API",
+    description="AI-powered glasses style advisor",
+    version="1.0.0",
+)
+
+# Vercel-compatible exports
+application = app
+handler = app
+
+
+# ============================================================
 # CONFIGURATION
 # ============================================================
 
 logging.basicConfig(level=logging.INFO)
+
 LOG = logging.getLogger("wear-galaxy-ai")
 
 API_KEY = (
@@ -29,7 +45,7 @@ API_KEY = (
 
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
-    "gemini-2.5-flash"
+    "gemini-2.5-flash",
 ).strip()
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -58,17 +74,6 @@ FACE_SHAPES = (
 
 
 # ============================================================
-# FASTAPI APPLICATION
-# ============================================================
-
-app = FastAPI(
-    title="WeAR Galaxy AI API",
-    description="AI-powered glasses style advisor",
-    version="1.0.0",
-)
-
-
-# ============================================================
 # CORS
 # ============================================================
 
@@ -82,27 +87,37 @@ app.add_middleware(
 
 
 # ============================================================
-# ERROR HANDLING
+# ERROR HELPER
 # ============================================================
 
-def _detail(message: str, extra: str = "") -> str:
+def _detail(
+    message: str,
+    extra: str = "",
+) -> str:
+
     if extra and DEBUG_ERRORS:
         return f"{message} [{extra}]"
 
     return message
 
 
+# ============================================================
+# GLOBAL ERROR HANDLER
+# ============================================================
+
 @app.middleware("http")
 async def catch_unhandled_errors(
     request: Request,
     call_next,
 ):
+
     try:
         return await call_next(request)
 
     except Exception as exc:
+
         LOG.exception(
-            "UNHANDLED ERROR on %s",
+            "UNHANDLED ERROR: %s",
             request.url.path,
         )
 
@@ -138,117 +153,137 @@ class Base64ImageRequest(BaseModel):
 # GEMINI CLIENT
 # ============================================================
 
-_GEMINI_CLIENT = None
-_GEMINI_ERROR: Optional[str] = None
+_gemini_client = None
+_gemini_error: Optional[str] = None
 
 
-def get_model():
-    """
-    Lazily initialize the Google Gemini client.
+def get_gemini_client():
 
-    Only google-genai is used.
-    """
+    global _gemini_client
+    global _gemini_error
 
-    global _GEMINI_CLIENT
-    global _GEMINI_ERROR
+    if _gemini_client is not None:
+        return _gemini_client
 
-    if _GEMINI_CLIENT is not None:
-        return _GEMINI_CLIENT
-
-    if _GEMINI_ERROR:
+    if _gemini_error:
         raise HTTPException(
             status_code=500,
-            detail=_GEMINI_ERROR,
+            detail=_gemini_error,
         )
 
     if not API_KEY:
-        _GEMINI_ERROR = (
+
+        _gemini_error = (
             "GEMINI_API_KEY is not configured. "
-            "Add GEMINI_API_KEY to Vercel Environment Variables."
+            "Please add GEMINI_API_KEY to "
+            "Vercel Environment Variables."
         )
 
         raise HTTPException(
             status_code=500,
-            detail=_GEMINI_ERROR,
+            detail=_gemini_error,
         )
 
     try:
+
+        # Lazy import.
+        # This prevents Vercel from loading the
+        # Google SDK while detecting the FastAPI app.
         from google import genai
 
-        _GEMINI_CLIENT = genai.Client(
+        _gemini_client = genai.Client(
             api_key=API_KEY
         )
 
-        return _GEMINI_CLIENT
+        return _gemini_client
 
     except Exception as exc:
-        LOG.exception("Gemini initialization failed")
 
-        _GEMINI_ERROR = _detail(
+        LOG.exception(
+            "Gemini initialization failed"
+        )
+
+        _gemini_error = _detail(
             "Gemini SDK could not be initialized.",
             f"{type(exc).__name__}: {exc}",
         )
 
         raise HTTPException(
             status_code=500,
-            detail=_GEMINI_ERROR,
+            detail=_gemini_error,
         )
 
 
 # ============================================================
-# GEMINI GENERATION
+# GEMINI RESPONSE TEXT
 # ============================================================
 
-def _extract_text(response: Any) -> str:
-    """
-    Safely extract text from Gemini response.
-    """
+def extract_response_text(
+    response: Any,
+) -> str:
 
     if response is None:
+
         raise HTTPException(
             status_code=502,
             detail="Gemini returned no response.",
         )
 
-    text: Optional[str] = None
-
+    # Preferred method
     try:
+
         text = response.text
+
+        if text and text.strip():
+            return text.strip()
+
     except Exception:
-        text = None
+        pass
 
-    if text:
-        return text.strip()
-
+    # Fallback
     chunks: List[str] = []
 
-    for candidate in (
-        getattr(response, "candidates", None)
+    candidates = (
+        getattr(
+            response,
+            "candidates",
+            None,
+        )
         or []
-    ):
+    )
+
+    for candidate in candidates:
+
         content = getattr(
             candidate,
             "content",
             None,
         )
 
-        for part in (
-            getattr(content, "parts", None)
+        parts = (
+            getattr(
+                content,
+                "parts",
+                None,
+            )
             or []
-        ):
-            piece = getattr(
+        )
+
+        for part in parts:
+
+            text = getattr(
                 part,
                 "text",
                 None,
             )
 
-            if piece:
-                chunks.append(piece)
+            if text:
+                chunks.append(text)
 
-    text = "".join(chunks).strip()
+    result = "".join(chunks).strip()
 
-    if text:
-        return text
+    if result:
+        return result
 
     raise HTTPException(
         status_code=422,
@@ -256,69 +291,90 @@ def _extract_text(response: Any) -> str:
     )
 
 
-def _generate(parts: List[Any]) -> str:
-    """
-    Send content to Gemini and return generated text.
-    """
+# ============================================================
+# GEMINI GENERATION
+# ============================================================
 
-    client = get_model()
+def generate_content(
+    parts: List[Any],
+) -> str:
+
+    client = get_gemini_client()
 
     try:
+
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=parts,
         )
 
-        return _extract_text(response)
+        return extract_response_text(
+            response
+        )
 
     except HTTPException:
         raise
 
     except Exception as exc:
-        LOG.exception("Gemini request failed")
+
+        LOG.exception(
+            "Gemini request failed"
+        )
 
         raise HTTPException(
             status_code=502,
             detail=_detail(
                 "Gemini request failed. "
-                "Check your API key, model name and quota.",
+                "Check your API key, model name "
+                "and quota.",
                 f"{type(exc).__name__}: {exc}",
             ),
         )
 
 
 # ============================================================
-# IMAGE HELPERS
+# IMAGE SIZE VALIDATION
 # ============================================================
 
-def _check_size(raw: bytes) -> None:
-    """
-    Validate uploaded image size.
-    """
+def check_image_size(
+    raw: bytes,
+) -> None:
 
     if not raw:
+
         raise HTTPException(
             status_code=400,
             detail="The uploaded image is empty.",
         )
 
     if len(raw) > MAX_IMAGE_BYTES:
+
         raise HTTPException(
             status_code=413,
-            detail="Image is too large. Maximum size is 10 MB.",
+            detail=(
+                "Image is too large. "
+                "Maximum size is 10 MB."
+            ),
         )
 
 
-def _open_image(raw: bytes) -> Any:
-    """
-    Decode image with Pillow and resize it.
-    """
+# ============================================================
+# OPEN IMAGE
+# ============================================================
+
+def open_image(
+    raw: bytes,
+) -> Any:
 
     try:
+
         from PIL import Image
 
     except Exception as exc:
-        LOG.exception("Pillow is not installed")
+
+        LOG.exception(
+            "Pillow is not installed"
+        )
 
         raise HTTPException(
             status_code=500,
@@ -329,6 +385,7 @@ def _open_image(raw: bytes) -> Any:
         )
 
     try:
+
         image = Image.open(
             io.BytesIO(raw)
         )
@@ -336,15 +393,23 @@ def _open_image(raw: bytes) -> Any:
         image.load()
 
     except Exception:
+
         raise HTTPException(
             status_code=400,
-            detail="The uploaded file is not a valid image.",
+            detail=(
+                "The uploaded file is not "
+                "a valid image."
+            ),
         )
 
+    # Convert to RGB for Gemini
     if image.mode != "RGB":
+
         image = image.convert("RGB")
 
+    # Resize large images
     if max(image.size) > MAX_IMAGE_EDGE:
+
         image.thumbnail(
             (
                 MAX_IMAGE_EDGE,
@@ -355,25 +420,32 @@ def _open_image(raw: bytes) -> Any:
     return image
 
 
-def _decode_base64_image(
+# ============================================================
+# BASE64 DECODER
+# ============================================================
+
+def decode_base64_image(
     payload: str,
 ) -> bytes:
-    """
-    Decode raw Base64 or data-URI image.
-    """
 
-    data = (payload or "").strip()
+    data = (
+        payload or ""
+    ).strip()
 
+    # Remove data URI prefix
     if "," in data:
+
         data = data.split(
             ",",
             1,
         )[1]
 
+    # Remove whitespace
     data = "".join(
         data.split()
     )
 
+    # Support base64url
     data = data.replace(
         "-",
         "+",
@@ -382,28 +454,36 @@ def _decode_base64_image(
         "/",
     )
 
+    # Restore padding
     data += "=" * (
         -len(data) % 4
     )
 
     if not data:
+
         raise HTTPException(
             status_code=400,
             detail="Image data is required.",
         )
 
-    # Approximate Base64 size protection
+    # Prevent huge Base64 allocations
     max_base64_length = (
-        (MAX_IMAGE_BYTES // 3 + 1) * 4
+        (MAX_IMAGE_BYTES // 3 + 1)
+        * 4
     )
 
     if len(data) > max_base64_length:
+
         raise HTTPException(
             status_code=413,
-            detail="Image is too large. Maximum size is 10 MB.",
+            detail=(
+                "Image is too large. "
+                "Maximum size is 10 MB."
+            ),
         )
 
     try:
+
         image_bytes = base64.b64decode(
             data,
             validate=True,
@@ -413,12 +493,15 @@ def _decode_base64_image(
         binascii.Error,
         ValueError,
     ):
+
         raise HTTPException(
             status_code=400,
             detail="Invalid Base64 image data.",
         )
 
-    _check_size(image_bytes)
+    check_image_size(
+        image_bytes
+    )
 
     return image_bytes
 
@@ -427,35 +510,40 @@ def _decode_base64_image(
 # MULTIPART UPLOAD
 # ============================================================
 
-async def _read_upload(
+async def read_upload(
     request: Request,
     field: str = "file",
 ):
-    """
-    Read uploaded multipart file.
-    """
 
     try:
+
         form = await request.form()
 
     except Exception as exc:
+
         LOG.exception(
-            "Could not parse multipart form data"
+            "Multipart form parsing failed"
         )
 
         raise HTTPException(
             status_code=400,
             detail=_detail(
-                "Could not read the uploaded form data. "
-                "Send the image as multipart/form-data "
-                "using a field named 'file'.",
+                "Could not read the uploaded "
+                "form data. Send the image as "
+                "multipart/form-data using a "
+                "'file' field.",
                 f"{type(exc).__name__}: {exc}",
             ),
         )
 
     upload = form.get(field)
 
-    if not hasattr(upload, "read"):
+    # Fallback: find first file
+    if not hasattr(
+        upload,
+        "read",
+    ):
+
         upload = next(
             (
                 value
@@ -466,9 +554,13 @@ async def _read_upload(
         )
 
     if upload is None:
+
         raise HTTPException(
             status_code=400,
-            detail="No image was uploaded. Use a 'file' field.",
+            detail=(
+                "No image was uploaded. "
+                "Use a 'file' field."
+            ),
         )
 
     return upload
@@ -479,7 +571,8 @@ async def _read_upload(
 # ============================================================
 
 FACE_ANALYSIS_PROMPT = """
-You are WeAR AI, a specialized eyeglass fashion assistant.
+You are WeAR AI, a specialized eyeglass
+fashion assistant.
 
 Analyze the person's face in the provided image.
 
@@ -494,15 +587,17 @@ Possible face shapes:
 - Diamond
 - Oblong
 
-Then recommend suitable eyeglass frame styles
-for that face shape.
+Then recommend suitable eyeglass frame
+styles for that face shape.
 
 Do not identify the person.
 Do not provide personal identity information.
-Only analyze visible facial proportions relevant
-to eyeglass styling.
 
-Keep the glasses recommendation to 15 words or less.
+Only analyze visible facial proportions
+relevant to eyeglass styling.
+
+Keep the glasses recommendation to
+15 words or less.
 
 Return ONLY this format:
 
@@ -514,8 +609,8 @@ WeAR AI's Suggestion: [Short glasses recommendation]
 WEBCAM_ANALYSIS_PROMPT = """
 You are WeAR AI, an eyeglass fashion assistant.
 
-Analyze the visible face and determine the
-most likely face shape.
+Analyze the visible face and determine
+the most likely face shape.
 
 Choose from:
 
@@ -526,7 +621,8 @@ Heart
 Diamond
 Oblong
 
-Then recommend suitable eyeglass frame styles.
+Then recommend suitable eyeglass
+frame styles.
 
 Do not identify the person.
 
@@ -540,13 +636,15 @@ Keep the recommendation to 15 words or less.
 
 
 SUGGESTION_PROMPT = """
-You are WeAR AI, a concise eyeglass fashion assistant.
+You are WeAR AI, a concise eyeglass
+fashion assistant.
 
 The user's face shape is:
 
 {shape}
 
-Recommend the most suitable eyeglass frame styles.
+Recommend the most suitable eyeglass
+frame styles.
 
 Keep the recommendation to 15 words or less.
 
@@ -557,8 +655,9 @@ WeAR AI's Suggestion: [Your recommendation]
 
 
 CHAT_SYSTEM_INSTRUCTION = """
-You are WeAR AI, a specialized AI fashion assistant
-for an application called WeAR Galaxy.
+You are WeAR AI, a specialized AI fashion
+assistant for an application called
+WeAR Galaxy.
 
 Your ONLY area of expertise is eyeglasses.
 
@@ -579,9 +678,9 @@ to eyeglasses.
 
 For unrelated questions, say:
 
-"I am the WeAR AI assistant and my expertise is
-limited to eyeglass frames. How can I help you
-with glasses today?"
+"I am the WeAR AI assistant and my expertise
+is limited to eyeglass frames. How can I help
+you with glasses today?"
 
 Do not claim to diagnose medical conditions.
 
@@ -595,32 +694,35 @@ Keep answers useful and reasonably concise.
 
 @app.get("/")
 async def root():
+
     return {
         "status": "online",
         "application": "WeAR Galaxy AI",
-        "message": "WeAR Galaxy AI API is running.",
+        "message": (
+            "WeAR Galaxy AI API is running."
+        ),
         "version": "1.0.0",
     }
 
 
 # ============================================================
-# HEALTH CHECK
+# HEALTH
 # ============================================================
 
 @app.get("/api/health")
 async def health():
 
-    configured = bool(API_KEY)
-
     return {
         "status": "healthy",
-        "gemini_configured": configured,
+        "gemini_configured": bool(
+            API_KEY
+        ),
         "model": GEMINI_MODEL,
     }
 
 
 # ============================================================
-# FACE SHAPE ANALYSIS
+# IMAGE ANALYSIS
 # ============================================================
 
 @app.post("/api/analyze")
@@ -629,7 +731,10 @@ async def analyze_image(
 ):
 
     try:
-        upload = await _read_upload(request)
+
+        upload = await read_upload(
+            request
+        )
 
         content_type = (
             getattr(
@@ -638,32 +743,47 @@ async def analyze_image(
                 None,
             )
             or ""
-        ).split(";")[0].strip().lower()
+        )
+
+        content_type = (
+            content_type
+            .split(";")[0]
+            .strip()
+            .lower()
+        )
 
         if not content_type:
+
             raise HTTPException(
                 status_code=400,
                 detail="No file type was provided.",
             )
 
-        if content_type not in ALLOWED_IMAGE_TYPES:
+        if (
+            content_type
+            not in ALLOWED_IMAGE_TYPES
+        ):
+
             raise HTTPException(
                 status_code=400,
                 detail=(
                     "Invalid image type. "
-                    "Please upload JPG, PNG, or WEBP."
+                    "Please upload JPG, PNG, "
+                    "or WEBP."
                 ),
             )
 
         image_bytes = await upload.read()
 
-        _check_size(image_bytes)
-
-        image = _open_image(
+        check_image_size(
             image_bytes
         )
 
-        result = _generate(
+        image = open_image(
+            image_bytes
+        )
+
+        result = generate_content(
             [
                 FACE_ANALYSIS_PROMPT,
                 image,
@@ -684,6 +804,7 @@ async def analyze_image(
         raise
 
     except Exception as exc:
+
         LOG.exception(
             "IMAGE ANALYSIS ERROR"
         )
@@ -707,11 +828,13 @@ async def manual_suggestion(
 ):
 
     try:
+
         shape = (
             request.shape or ""
         ).strip()
 
         if not shape:
+
             raise HTTPException(
                 status_code=400,
                 detail="Face shape is required.",
@@ -728,6 +851,7 @@ async def manual_suggestion(
         )
 
         if not matched_shape:
+
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -737,7 +861,7 @@ async def manual_suggestion(
                 ),
             )
 
-        recommendation = _generate(
+        recommendation = generate_content(
             [
                 SUGGESTION_PROMPT.format(
                     shape=matched_shape
@@ -755,8 +879,9 @@ async def manual_suggestion(
         raise
 
     except Exception as exc:
+
         LOG.exception(
-            "MANUAL SUGGESTION ERROR"
+            "SUGGESTION ERROR"
         )
 
         raise HTTPException(
@@ -778,17 +903,20 @@ async def chatbot(
 ):
 
     try:
+
         message = (
             request.message or ""
         ).strip()
 
         if not message:
+
             raise HTTPException(
                 status_code=400,
                 detail="Message cannot be empty.",
             )
 
         if len(message) > 4000:
+
             raise HTTPException(
                 status_code=400,
                 detail="Message is too long.",
@@ -801,7 +929,7 @@ async def chatbot(
             "Answer the user now."
         )
 
-        answer = _generate(
+        answer = generate_content(
             [prompt]
         )
 
@@ -814,6 +942,7 @@ async def chatbot(
         raise
 
     except Exception as exc:
+
         LOG.exception(
             "CHAT ERROR"
         )
@@ -837,21 +966,23 @@ async def analyze_base64(
 ):
 
     try:
+
         if not request.image:
+
             raise HTTPException(
                 status_code=400,
                 detail="Image data is required.",
             )
 
-        image_bytes = _decode_base64_image(
+        image_bytes = decode_base64_image(
             request.image
         )
 
-        image = _open_image(
+        image = open_image(
             image_bytes
         )
 
-        analysis = _generate(
+        analysis = generate_content(
             [
                 WEBCAM_ANALYSIS_PROMPT,
                 image,
@@ -867,6 +998,7 @@ async def analyze_base64(
         raise
 
     except Exception as exc:
+
         LOG.exception(
             "BASE64 ANALYSIS ERROR"
         )
@@ -901,11 +1033,15 @@ async def api_info():
 
 
 # ============================================================
-# VERCEL EXPORT
+# VERCEL EXPORTS
 # ============================================================
+
+# Keep these at module level.
+# Vercel looks for one of these names.
 
 application = app
 handler = app
+
 
 __all__ = [
     "app",
@@ -919,10 +1055,11 @@ __all__ = [
 # ============================================================
 
 if __name__ == "__main__":
+
     import uvicorn
 
     uvicorn.run(
-        "app:app",
+        "api.index:app",
         host="127.0.0.1",
         port=int(
             os.getenv(
