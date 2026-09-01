@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 
 # ============================================================
-# APPLICATION
+# FASTAPI APPLICATION
 # ============================================================
 
 app = FastAPI(
@@ -24,18 +24,27 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Vercel-compatible exports
+
+# ============================================================
+# VERCEL EXPORTS
+# ============================================================
+
 application = app
 handler = app
 
 
 # ============================================================
-# CONFIGURATION
+# LOGGING
 # ============================================================
 
 logging.basicConfig(level=logging.INFO)
 
 LOG = logging.getLogger("wear-galaxy-ai")
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 API_KEY = (
     os.getenv("GEMINI_API_KEY")
@@ -49,6 +58,7 @@ GEMINI_MODEL = os.getenv(
 ).strip()
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
 MAX_IMAGE_EDGE = 1024
 
 DEBUG_ERRORS = (
@@ -56,12 +66,14 @@ DEBUG_ERRORS = (
     in {"1", "true", "yes"}
 )
 
+
 ALLOWED_IMAGE_TYPES = {
     "image/jpeg",
     "image/jpg",
     "image/png",
     "image/webp",
 }
+
 
 FACE_SHAPES = (
     "Oval",
@@ -87,7 +99,7 @@ app.add_middleware(
 
 
 # ============================================================
-# ERROR HELPER
+# ERROR DETAIL
 # ============================================================
 
 def _detail(
@@ -112,6 +124,7 @@ async def catch_unhandled_errors(
 ):
 
     try:
+
         return await call_next(request)
 
     except Exception as exc:
@@ -162,15 +175,19 @@ def get_gemini_client():
     global _gemini_client
     global _gemini_error
 
+    # Reuse existing client
     if _gemini_client is not None:
         return _gemini_client
 
+    # Reuse previous initialization error
     if _gemini_error:
+
         raise HTTPException(
             status_code=500,
             detail=_gemini_error,
         )
 
+    # Check API key
     if not API_KEY:
 
         _gemini_error = (
@@ -187,8 +204,8 @@ def get_gemini_client():
     try:
 
         # Lazy import.
-        # This prevents Vercel from loading the
-        # Google SDK while detecting the FastAPI app.
+        # This is intentionally NOT imported at
+        # application startup.
         from google import genai
 
         _gemini_client = genai.Client(
@@ -215,7 +232,7 @@ def get_gemini_client():
 
 
 # ============================================================
-# GEMINI RESPONSE TEXT
+# GEMINI RESPONSE EXTRACTION
 # ============================================================
 
 def extract_response_text(
@@ -229,18 +246,26 @@ def extract_response_text(
             detail="Gemini returned no response.",
         )
 
-    # Preferred method
+    # --------------------------------------------------------
+    # Normal response.text
+    # --------------------------------------------------------
+
     try:
 
         text = response.text
 
         if text and text.strip():
+
             return text.strip()
 
     except Exception:
+
         pass
 
-    # Fallback
+    # --------------------------------------------------------
+    # Fallback candidate extraction
+    # --------------------------------------------------------
+
     chunks: List[str] = []
 
     candidates = (
@@ -278,11 +303,15 @@ def extract_response_text(
             )
 
             if text:
+
                 chunks.append(text)
 
-    result = "".join(chunks).strip()
+    result = "".join(
+        chunks
+    ).strip()
 
     if result:
+
         return result
 
     raise HTTPException(
@@ -303,9 +332,11 @@ def generate_content(
 
     try:
 
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=parts,
+        response = (
+            client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=parts,
+            )
         )
 
         return extract_response_text(
@@ -313,6 +344,7 @@ def generate_content(
         )
 
     except HTTPException:
+
         raise
 
     except Exception as exc:
@@ -333,7 +365,7 @@ def generate_content(
 
 
 # ============================================================
-# IMAGE SIZE VALIDATION
+# IMAGE SIZE CHECK
 # ============================================================
 
 def check_image_size(
@@ -359,7 +391,7 @@ def check_image_size(
 
 
 # ============================================================
-# OPEN IMAGE
+# OPEN AND RESIZE IMAGE
 # ============================================================
 
 def open_image(
@@ -368,6 +400,7 @@ def open_image(
 
     try:
 
+        # Lazy import of Pillow
         from PIL import Image
 
     except Exception as exc:
@@ -402,12 +435,12 @@ def open_image(
             ),
         )
 
-    # Convert to RGB for Gemini
+    # Gemini receives RGB images
     if image.mode != "RGB":
 
         image = image.convert("RGB")
 
-    # Resize large images
+    # Reduce very large images
     if max(image.size) > MAX_IMAGE_EDGE:
 
         image.thumbnail(
@@ -421,7 +454,7 @@ def open_image(
 
 
 # ============================================================
-# BASE64 DECODER
+# BASE64 IMAGE DECODER
 # ============================================================
 
 def decode_base64_image(
@@ -432,7 +465,8 @@ def decode_base64_image(
         payload or ""
     ).strip()
 
-    # Remove data URI prefix
+    # Handle:
+    # data:image/png;base64,xxxxx
     if "," in data:
 
         data = data.split(
@@ -440,12 +474,12 @@ def decode_base64_image(
             1,
         )[1]
 
-    # Remove whitespace
+    # Remove whitespace/newlines
     data = "".join(
         data.split()
     )
 
-    # Support base64url
+    # Support Base64 URL encoding
     data = data.replace(
         "-",
         "+",
@@ -454,7 +488,7 @@ def decode_base64_image(
         "/",
     )
 
-    # Restore padding
+    # Restore Base64 padding
     data += "=" * (
         -len(data) % 4
     )
@@ -466,7 +500,7 @@ def decode_base64_image(
             detail="Image data is required.",
         )
 
-    # Prevent huge Base64 allocations
+    # Prevent extremely large input
     max_base64_length = (
         (MAX_IMAGE_BYTES // 3 + 1)
         * 4
@@ -507,7 +541,7 @@ def decode_base64_image(
 
 
 # ============================================================
-# MULTIPART UPLOAD
+# MULTIPART FILE READER
 # ============================================================
 
 async def read_upload(
@@ -538,7 +572,8 @@ async def read_upload(
 
     upload = form.get(field)
 
-    # Fallback: find first file
+    # If "file" isn't found, search for
+    # another file-like field.
     if not hasattr(
         upload,
         "read",
@@ -567,7 +602,7 @@ async def read_upload(
 
 
 # ============================================================
-# PROMPTS
+# AI PROMPTS
 # ============================================================
 
 FACE_ANALYSIS_PROMPT = """
@@ -591,6 +626,7 @@ Then recommend suitable eyeglass frame
 styles for that face shape.
 
 Do not identify the person.
+
 Do not provide personal identity information.
 
 Only analyze visible facial proportions
@@ -689,7 +725,7 @@ Keep answers useful and reasonably concise.
 
 
 # ============================================================
-# ROOT
+# ROOT ENDPOINT
 # ============================================================
 
 @app.get("/")
@@ -706,7 +742,7 @@ async def root():
 
 
 # ============================================================
-# HEALTH
+# HEALTH ENDPOINT
 # ============================================================
 
 @app.get("/api/health")
@@ -722,7 +758,7 @@ async def health():
 
 
 # ============================================================
-# IMAGE ANALYSIS
+# FACE IMAGE ANALYSIS
 # ============================================================
 
 @app.post("/api/analyze")
@@ -735,6 +771,10 @@ async def analyze_image(
         upload = await read_upload(
             request
         )
+
+        # ----------------------------------------------------
+        # File type
+        # ----------------------------------------------------
 
         content_type = (
             getattr(
@@ -773,6 +813,10 @@ async def analyze_image(
                 ),
             )
 
+        # ----------------------------------------------------
+        # Read image
+        # ----------------------------------------------------
+
         image_bytes = await upload.read()
 
         check_image_size(
@@ -782,6 +826,10 @@ async def analyze_image(
         image = open_image(
             image_bytes
         )
+
+        # ----------------------------------------------------
+        # Gemini
+        # ----------------------------------------------------
 
         result = generate_content(
             [
@@ -801,6 +849,7 @@ async def analyze_image(
         }
 
     except HTTPException:
+
         raise
 
     except Exception as exc:
@@ -876,6 +925,7 @@ async def manual_suggestion(
         }
 
     except HTTPException:
+
         raise
 
     except Exception as exc:
@@ -939,6 +989,7 @@ async def chatbot(
         }
 
     except HTTPException:
+
         raise
 
     except Exception as exc:
@@ -957,7 +1008,7 @@ async def chatbot(
 
 
 # ============================================================
-# BASE64 IMAGE ANALYSIS
+# BASE64 / WEBCAM IMAGE ANALYSIS
 # ============================================================
 
 @app.post("/api/analyze-base64")
@@ -995,6 +1046,7 @@ async def analyze_base64(
         }
 
     except HTTPException:
+
         raise
 
     except Exception as exc:
@@ -1033,40 +1085,12 @@ async def api_info():
 
 
 # ============================================================
-# VERCEL EXPORTS
+# EXPORTS
 # ============================================================
-
-# Keep these at module level.
-# Vercel looks for one of these names.
-
-application = app
-handler = app
-
 
 __all__ = [
     "app",
     "application",
     "handler",
 ]
-
-
-# ============================================================
-# LOCAL DEVELOPMENT
-# ============================================================
-
-if __name__ == "__main__":
-
-    import uvicorn
-
-    uvicorn.run(
-        "api.index:app",
-        host="127.0.0.1",
-        port=int(
-            os.getenv(
-                "PORT",
-                "8000",
-            )
-        ),
-        reload=True,
-    )
 ```
