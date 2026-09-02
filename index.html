@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="WeAR Galaxy AI Glasses Style Advisor">
+  <title>WeAR Galaxy AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+  <nav class="navbar">
+    <a class="brand" href="/">
+      <span class="brand-mark">W</span>
+      <span>WeAR Galaxy</span>
+    </a>
+
+    <div class="nav-links">
+      <a href="https://weargalaxy.me/" target="_self">Home</a>
+      <a href="https://weargalaxy.me/about/" target="_self">About</a>
+      <a href="https://weargalaxy.me/gallery/" target="_self">Gallery</a>
+      <a class="active" href="/">WeAR AI 🚀</a>
+      <a href="https://weargalaxy.me/contact/" target="_self">Contact</a>
+    </div>
+
+    <button class="mobile-menu" id="mobileMenu" aria-label="Open menu">☰</button>
+  </nav>
+
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">AI-POWERED EYEGLASS ADVISOR</div>
+      <h1>👓 WeAR Galaxy AI Glasses Style Advisor</h1>
+      <p>Get personalized glasses recommendations based on your face shape, powered by WeAR AI.</p>
+    </section>
+
+    <div class="mode-tabs" role="tablist" aria-label="Choose input method">
+      <button class="mode-tab active" data-mode="webcam">📷 Webcam</button>
+      <button class="mode-tab" data-mode="upload">🖼️ Upload Image</button>
+      <button class="mode-tab" data-mode="manual">✨ Manual Input</button>
+      <button class="mode-tab" data-mode="chat">💬 Chatbot</button>
+    </div>
+
+    <section id="advisorSection" class="workspace">
+      <div class="panel input-panel">
+        <div class="panel-title">
+          <span>Your Input</span>
+          <span class="status-dot"></span>
+        </div>
+
+        <!-- WEBCAM -->
+        <div class="mode-content active" id="webcamMode">
+          <p class="helper">Position your face in the frame, then capture and analyze your photo.</p>
+
+          <div class="camera-box">
+            <video id="camera" autoplay playsinline muted></video>
+            <div class="camera-placeholder" id="cameraPlaceholder">
+              <div class="camera-icon">📷</div>
+              <span>Camera preview</span>
+              <small>Allow camera access when prompted.</small>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button class="btn secondary" id="startCameraBtn">Start Camera</button>
+            <button class="btn primary" id="captureBtn" disabled>Capture Photo</button>
+          </div>
+
+          <canvas id="cameraCanvas" class="hidden"></canvas>
+
+          <div id="capturePreviewWrap" class="preview-wrap hidden">
+            <img id="capturePreview" alt="Captured face">
+            <button class="btn primary" id="analyzeCaptureBtn">Analyze Photo</button>
+          </div>
+        </div>
+
+        <!-- UPLOAD -->
+        <div class="mode-content" id="uploadMode">
+          <p class="helper">Upload a clear JPG, PNG, or WEBP image containing one visible face.</p>
+
+          <label class="upload-area" for="imageInput">
+            <div class="upload-icon">↑</div>
+            <strong>Choose an image</strong>
+            <span>JPG, PNG or WEBP · Maximum 10 MB</span>
+            <span class="upload-button">Browse Files</span>
+          </label>
+
+          <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+
+          <div id="uploadPreviewWrap" class="preview-wrap hidden">
+            <img id="uploadPreview" alt="Uploaded image">
+            <button class="btn primary" id="analyzeUploadBtn">Analyze Uploaded Image</button>
+          </div>
+        </div>
+
+        <!-- MANUAL -->
+        <div class="mode-content" id="manualMode">
+          <p class="helper">Already know your face shape? Select it below and WeAR AI will recommend frames.</p>
+
+          <label class="field-label" for="shapeSelect">What is your face shape?</label>
+          <select id="shapeSelect" class="select">
+            <option value="">Select a Shape</option>
+            <option value="Oval">Oval</option>
+            <option value="Square">Square</option>
+            <option value="Round">Round</option>
+            <option value="Heart">Heart</option>
+            <option value="Diamond">Diamond</option>
+            <option value="Oblong">Oblong</option>
+          </select>
+
+          <button class="btn primary full" id="manualBtn">Get Glasses Recommendation</button>
+        </div>
+      </div>
+
+      <div class="panel result-panel">
+        <div class="panel-title">AI Analysis</div>
+
+        <div class="result-card" id="resultCard">
+          <div class="result-icon">👓</div>
+          <h2 id="resultTitle">Ready when you are</h2>
+          <p id="resultText">Use your webcam, upload an image, or choose your face shape to get a personalized WeAR AI recommendation.</p>
+        </div>
+
+        <div class="loading hidden" id="loading">
+          <div class="spinner"></div>
+          <span>WeAR AI is analyzing...</span>
+        </div>
+
+        <button class="btn ghost" id="clearBtn">Clear Result</button>
+      </div>
+    </section>
+
+    <!-- CHAT -->
+    <section id="chatSection" class="chat-section hidden">
+      <div class="panel chat-panel">
+        <div class="chat-header">
+          <div>
+            <div class="panel-title">Conversational AI Advisor</div>
+            <p>Ask WeAR AI about eyeglass frames, styles, sizing, materials, and face shapes.</p>
+          </div>
+          <button class="btn ghost" id="clearChatBtn">Clear Chat</button>
+        </div>
+
+        <div class="messages" id="messages">
+          <div class="message assistant">
+            <div class="avatar">W</div>
+            <div class="bubble">Hello! I am the WeAR AI. How can I help you find the perfect glasses frames today?</div>
+          </div>
+        </div>
+
+        <form class="chat-form" id="chatForm">
+          <input id="chatInput" type="text" maxlength="4000" autocomplete="off" placeholder="Ask about glasses styles..." required>
+          <button class="send-btn" type="submit" aria-label="Send message">➤</button>
+        </form>
+      </div>
+    </section>
+
+    <div id="toast" class="toast"></div>
+  </main>
+
+  <footer>
+    <span>© <span id="year"></span> WeAR Galaxy</span>
+    <span>Powered by WeAR AI</span>
+  </footer>
+
+  <script src="/script.js"></script>
+</body>
+</html>
